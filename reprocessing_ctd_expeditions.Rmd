@@ -1,0 +1,563 @@
+---
+title: "Oceanographic variables"
+author: "Masumbuko Semba"
+date: "1/13/2020"
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+```
+
+
+
+```{r}
+require(oce)
+require(ocedata)
+require(tidyverse)
+require(sf)
+require(lubridate)
+
+```
+
+## Expedition of June 2018
+```{r}
+file = dir("e:/Data Manipulation/ctd_bongo2018/", pattern = ".cnv", full.names = TRUE)
+```
+
+```{r}
+ctd = list()
+
+for (i in 1:length(file)){
+  ctd[[i]] = read.ctd(file[i]) %>%
+    ctdTrim(method = "downcast") %>%
+    ctdDecimate(p = 1)
+  
+}
+```
+
+
+Create a section of the CTD station casted in June 2018
+
+```{r}
+
+ctd.section = ctd %>% 
+  as.section()
+
+```
+
+
+subset only the cast north of Mafia Island and smooth profiles to a standard depth of 2 meters. You can can simply change the standard depth that represent the situation on the ground
+```{r}
+## 
+tz.section = ctd.section %>% 
+  subset(latitude >=-8) %>% 
+  sectionGrid(p = seq(0,170,2))
+
+
+```
+
+The plot the location of the CTD cast
+```{r}
+## plot the smoothed values
+tz.section %>% plot( which = "map")
+```
+
+We notice that there are thirteen casts made during the June 2018 Expedition. Once we have picked only the ctd cast of interest, we need to convert the section to a data frame, a format that other programs can read. We first need to convert the section back to a list
+
+```{r}
+tz.ctd.list = tz.section[["station"]]
+```
+
+Because there are thirteen stations, we simply use `for` loop function to iterate the process. The whole process will create a tibble files that contains all the stations and their variable that associated with depth. 
+```{r}
+ctd.cast.df18 = list()
+
+for (j in 1:length(tz.ctd.list)){
+  
+ctd.cast.df18[[j]] = tz.ctd.list[[j]]@data %>% 
+  as_tibble()%>%
+  mutate(time = tz.ctd.list[[j]]@metadata$startTime, 
+         longitude = tz.ctd.list[[j]]@metadata$longitude, 
+         latitude = tz.ctd.list[[j]]@metadata$latitude, 
+         station = tz.ctd.list[[j]]@metadata$station) %>% 
+  select(time, longitude, latitude, station,pressure, depth, everything()) 
+  
+}
+
+ctd.cast.df18 = ctd.cast.df18 %>%
+  bind_rows()
+
+```
+
+We can check whether we can confirm the four stations that form a transect just off Kimbiji
+```{r}
+ctd.cast.df18 %>% 
+  filter(latitude >= -8 & latitude <= -7) %>% 
+  distinct(station)
+```
+
+
+We can now plot the sections of some variables for the the transect off Kimbiji
+```{r}
+
+kimbiji.ctd.tb = ctd.cast.df18 %>% 
+  filter(latitude >= -8 & latitude <= -7 & pressure <= 200)
+
+egg::ggarrange(
+  
+ggplot(data = kimbiji.ctd.tb, 
+                      aes(x = longitude, y = pressure, z = fluorescence)) +
+  metR::geom_contour_fill(na.fill = TRUE, bins = 60)+
+  metR::geom_contour2(colour = "grey40")+
+  metR::geom_text_contour(stroke = 0, rotate = FALSE)+
+  scale_y_reverse()+
+  scale_fill_gradientn(colours = oce::oce.colors9A(120))+
+  coord_cartesian(expand = FALSE)+
+  metR::scale_x_longitude(ticks = .05)+
+  theme_bw()+
+  theme(legend.position = "right", legend.background = element_rect(fill = NA), 
+        legend.text = element_text(colour = "white"), legend.title = element_text(colour = "white"), 
+        axis.text = element_text(size = 12, colour = "black", family = "Myriad Pro"), 
+        axis.title = element_text(size = 14, colour = "black", family = "Myriad Pro"))+
+  guides(fill = guide_colorbar(title.position = "right",direction = "vertical", 
+                               barheight = unit(4,"cm"), title.vjust = .5,reverse = TRUE,
+                               label.theme = element_text(size = 12, colour = "black"),
+                               title.theme = element_text(size = 13, colour = "black", angle = 90),
+                               title = expression(Concentration~(mgm^{-3}))))+
+  ylab("Pressure [m]"),
+
+ggplot(data = kimbiji.ctd.tb, 
+                      aes(x = longitude, y = pressure, z = temperature)) +
+  metR::geom_contour_fill(na.fill = TRUE, bins = 60)+
+  metR::geom_contour2(colour = "grey40")+
+  metR::geom_text_contour(stroke = 0, rotate = FALSE)+
+  scale_y_reverse()+
+  scale_fill_gradientn(colours = oce::oce.colorsTemperature(120))+
+  coord_cartesian(expand = FALSE)+
+  metR::scale_x_longitude(ticks = .05)+
+  theme_bw()+
+  theme(legend.position = "right", legend.background = element_rect(fill = NA), 
+        legend.text = element_text(colour = "white"), legend.title = element_text(colour = "white"), 
+        axis.text = element_text(size = 12, colour = "black", family = "Myriad Pro"), 
+        axis.title = element_text(size = 14, colour = "black", family = "Myriad Pro"))+
+  guides(fill = guide_colorbar(title.position = "right",direction = "vertical", 
+                               barheight = unit(4,"cm"), title.vjust = .5,reverse = TRUE,
+                               label.theme = element_text(size = 12, colour = "black"),
+                               title.theme = element_text(size = 13, colour = "black", angle = 90),
+                               title = expression(Temperature~(degree*C))))+
+  ylab("Pressure [m]"),
+
+ggplot(data = kimbiji.ctd.tb, 
+                      aes(x = longitude, y = pressure, z = oxygen)) +
+  metR::geom_contour_fill(na.fill = TRUE, bins = 60)+
+  metR::geom_contour2(colour = "grey40")+
+  metR::geom_text_contour(stroke = 0, rotate = FALSE)+
+  scale_y_reverse()+
+  scale_fill_gradientn(colours = oce::oce.colorsViridis(120))+
+  coord_cartesian(expand = FALSE)+
+  metR::scale_x_longitude(ticks = .05)+
+  theme_bw()+
+  theme(legend.position = "right", legend.background = element_rect(fill = NA), 
+        legend.text = element_text(colour = "white"), legend.title = element_text(colour = "white"), 
+        axis.text = element_text(size = 12, colour = "black", family = "Myriad Pro"), 
+        axis.title = element_text(size = 14, colour = "black", family = "Myriad Pro"))+
+  guides(fill = guide_colorbar(title.position = "right",direction = "vertical", 
+                               barheight = unit(4,"cm"), title.vjust = .5, reverse = TRUE,
+                               label.theme = element_text(size = 12, colour = "black"),
+                               title.theme = element_text(size = 13, colour = "black", angle = 90),
+                               title = expression(Dissolved~oxygen~(mgm^{-1}))))+
+  ylab("Pressure [m]")
+
+)
+
+```
+
+
+## Expedition of November 2017
+
+```{r}
+file = dir("e:/Data Manipulation/ctd_bongo2017/", pattern = ".cnv", full.names = TRUE)
+```
+
+```{r}
+ctd = list()
+
+for (i in 1:length(file)){
+  ctd[[i]] = read.ctd(file[i]) %>%
+    ctdTrim(method = "downcast") %>%
+    ctdDecimate(p = 1)
+  
+}
+```
+
+
+Create a section of the CTD station casted in November 2017
+
+```{r}
+
+ctd.section = ctd %>% 
+  as.section()
+
+```
+
+
+subset only the cast north of Mafia Island and smooth profiles to a standard depth of 2 meters. You can can simply change the standard depth that represent the situation on the ground
+```{r}
+## 
+tz.section = ctd.section %>% 
+  subset(latitude >=-8) %>% 
+  sectionGrid(p = seq(0,170,2))
+
+
+```
+
+The plot the location of the CTD cast
+```{r}
+## plot the smoothed values
+tz.section %>% plot( which = "map")
+```
+
+We notice that this expedition casted in the deep water and there are three transects---off Chwaka, South of Kizimkazi and off Kimbiji. Once we have picked only the ctd cast of interest, we need to convert the section to a data frame, a format that other programs can read. We first need to convert the section back to a list
+
+```{r}
+tz.ctd.list = tz.section[["station"]]
+```
+
+Because there are eighteen stations, we simply use `for` loop function to iterate the process. The whole process will create a tibble files that contains all the stations and their variable that associated with standard depth. 
+```{r}
+ctd.cast.df17 = list()
+
+for (j in 1:length(tz.ctd.list)){
+  
+ctd.cast.df17[[j]] = tz.ctd.list[[j]]@data %>% 
+  as_tibble()%>%
+  mutate(time = tz.ctd.list[[j]]@metadata$startTime, 
+         longitude = tz.ctd.list[[j]]@metadata$longitude, 
+         latitude = tz.ctd.list[[j]]@metadata$latitude, 
+         station = tz.ctd.list[[j]]@metadata$station) %>% 
+  select(time, longitude, latitude, station,pressure, depth, everything()) 
+  
+}
+
+ctd.cast.df17 = ctd.cast.df17 %>%
+  bind_rows()
+
+```
+
+We can check whether we can confirm the eight stations that form a transect just off Kimbiji for 2017 expedition
+```{r}
+ctd.cast.df17 %>% 
+  filter(latitude >= -8 & latitude <= -7) %>% 
+  distinct(station)
+```
+
+
+We can now plot the sections of some variables for the the transect off Kimbiji
+```{r}
+
+kimbiji.ctd.tb = ctd.cast.df17 %>% 
+  filter(latitude >= -8 & latitude <= -7 & pressure <= 200)
+
+egg::ggarrange(
+  
+ggplot(data = kimbiji.ctd.tb, 
+                      aes(x = longitude, y = pressure, z = fluorescence)) +
+  metR::geom_contour_fill(na.fill = TRUE, bins = 60)+
+  metR::geom_contour2(colour = "grey40")+
+  metR::geom_text_contour(stroke = 0, rotate = FALSE)+
+  scale_y_reverse()+
+  scale_fill_gradientn(colours = oce::oce.colors9A(120))+
+  coord_cartesian(expand = FALSE)+
+  metR::scale_x_longitude(ticks = .15)+
+  theme_bw()+
+  theme(legend.position = "right", legend.background = element_rect(fill = NA), 
+        legend.text = element_text(colour = "white"), legend.title = element_text(colour = "white"), 
+        axis.text = element_text(size = 12, colour = "black", family = "Myriad Pro"), 
+        axis.title = element_text(size = 14, colour = "black", family = "Myriad Pro"))+
+  guides(fill = guide_colorbar(title.position = "right",direction = "vertical", 
+                               barheight = unit(4,"cm"), title.vjust = .5,reverse = TRUE,
+                               label.theme = element_text(size = 12, colour = "black"),
+                               title.theme = element_text(size = 13, colour = "black", angle = 90),
+                               title = expression(Concentration~(mgm^{-3}))))+
+  ylab("Pressure [m]"),
+
+ggplot(data = kimbiji.ctd.tb, 
+                      aes(x = longitude, y = pressure, z = temperature)) +
+  metR::geom_contour_fill(na.fill = TRUE, bins = 60)+
+  metR::geom_contour2(colour = "grey40")+
+  metR::geom_text_contour(stroke = 0, rotate = FALSE)+
+  scale_y_reverse()+
+  scale_fill_gradientn(colours = oce::oce.colorsTemperature(120))+
+  coord_cartesian(expand = FALSE)+
+  metR::scale_x_longitude(ticks = .15)+
+  theme_bw()+
+  theme(legend.position = "right", legend.background = element_rect(fill = NA), 
+        legend.text = element_text(colour = "white"), legend.title = element_text(colour = "white"), 
+        axis.text = element_text(size = 12, colour = "black", family = "Myriad Pro"), 
+        axis.title = element_text(size = 14, colour = "black", family = "Myriad Pro"))+
+  guides(fill = guide_colorbar(title.position = "right",direction = "vertical", 
+                               barheight = unit(4,"cm"), title.vjust = .5,reverse = TRUE,
+                               label.theme = element_text(size = 12, colour = "black"),
+                               title.theme = element_text(size = 13, colour = "black", angle = 90),
+                               title = expression(Temperature~(degree*C))))+
+  ylab("Pressure [m]"),
+
+ggplot(data = kimbiji.ctd.tb, 
+                      aes(x = longitude, y = pressure, z = oxygen)) +
+  metR::geom_contour_fill(na.fill = TRUE, bins = 60)+
+  metR::geom_contour2(colour = "grey40")+
+  metR::geom_text_contour(stroke = 0, rotate = FALSE)+
+  scale_y_reverse()+
+  scale_fill_gradientn(colours = oce::oce.colorsViridis(120))+
+  coord_cartesian(expand = FALSE)+
+  metR::scale_x_longitude(ticks = .15)+
+  theme_bw()+
+  theme(legend.position = "right", legend.background = element_rect(fill = NA), 
+        legend.text = element_text(colour = "white"), legend.title = element_text(colour = "white"), 
+        axis.text = element_text(size = 12, colour = "black", family = "Myriad Pro"), 
+        axis.title = element_text(size = 14, colour = "black", family = "Myriad Pro"))+
+  guides(fill = guide_colorbar(title.position = "right",direction = "vertical", 
+                               barheight = unit(4,"cm"), title.vjust = .5, reverse = TRUE,
+                               label.theme = element_text(size = 12, colour = "black"),
+                               title.theme = element_text(size = 13, colour = "black", angle = 90),
+                               title = expression(Dissolved~oxygen~(mgm^{-1}))))+
+  ylab("Pressure [m]")
+
+)
+
+```
+
+
+## Expedition of August 2004
+
+notice that the algoa folder contain both upcast and downcast, to create a list of files in the directory, I used the `dstn` instead of `.cnv` extension to only pull the file that recorded the downcast profiles. 
+```{r}
+file = dir("e:/Data Manipulation/ctd_algoa//", pattern = "dstn", full.names = TRUE)
+```
+
+
+```{r}
+ctd = list()
+
+for (i in 1:length(file)){
+  ctd[[i]] = read.ctd(file[i]) %>%
+    ctdTrim(method = "downcast") %>%
+    ctdDecimate(p = 1)
+  
+}
+```
+
+
+Create a section of the CTD station casted in August 2004 with Algoa cruise
+
+```{r}
+
+ctd.section = ctd %>% 
+  as.section()
+
+```
+
+
+subset only the cast north of Mafia Island and smooth profiles to a standard depth of 2 meters. You can can simply change the standard depth that represent the situation on the ground
+```{r}
+## 
+tz.section = ctd.section %>% 
+  subset(latitude >= -8) %>% 
+  sectionGrid(p = seq(0,170,2))
+
+
+```
+
+The plot the location of the CTD cast
+```{r}
+## plot the smoothed values
+tz.section %>% plot( which = "map")
+```
+
+We notice that this expedition casted in the deep water and shallow areas with a total of two transects---Pemba channel and off Kimbiji. Once we have picked only the ctd cast of interest, we need to convert the section to a data frame, a format that other programs can read. We first need to convert the section back to a list
+
+```{r}
+tz.ctd.list = tz.section[["station"]]
+```
+
+Because there are eighteen stations, we simply use `for` loop function to iterate the process. The whole process will create a tibble files that contains all the stations and their variable that associated with standard depth. 
+```{r}
+ctd.cast.df04 = list()
+
+for (j in 1:length(tz.ctd.list)){
+  
+ctd.cast.df04[[j]] = tz.ctd.list[[j]]@data %>% 
+  as_tibble()%>%
+  mutate(time = tz.ctd.list[[j]]@metadata$startTime, 
+         longitude = tz.ctd.list[[j]]@metadata$longitude, 
+         latitude = tz.ctd.list[[j]]@metadata$latitude, 
+         station = tz.ctd.list[[j]]@metadata$station) %>% 
+  select(time, longitude, latitude, station,pressure, depth, everything()) 
+  
+}
+
+ctd.cast.df04 = ctd.cast.df04 %>%
+  bind_rows()
+
+```
+
+We can check whether we can confirm the five stations that form a transect just off Kimbiji for 2004 expedition
+```{r}
+ctd.cast.df04 %>% 
+  filter(latitude >= -8 & latitude <= -7) %>% 
+  distinct(station)
+```
+
+We can now plot the sections of some variables for the the transect off Kimbiji
+```{r}
+
+kimbiji.ctd.tb = ctd.cast.df04 %>% 
+  filter(latitude >= -8 & latitude <= -6.5 & pressure <= 200)
+
+egg::ggarrange(
+  
+ggplot(data = kimbiji.ctd.tb, 
+                      aes(x = longitude, y = pressure, z = fluorescence)) +
+  metR::geom_contour_fill(na.fill = TRUE, bins = 60)+
+  metR::geom_contour2(colour = "grey40")+
+  metR::geom_text_contour(stroke = 0, rotate = FALSE)+
+  scale_y_reverse()+
+  scale_fill_gradientn(colours = oce::oce.colors9A(120))+
+  coord_cartesian(expand = FALSE)+
+  metR::scale_x_longitude(ticks = .15)+
+  theme_bw()+
+  theme(legend.position = "right", legend.background = element_rect(fill = NA), 
+        legend.text = element_text(colour = "white"), legend.title = element_text(colour = "white"), 
+        axis.text = element_text(size = 12, colour = "black", family = "Myriad Pro"), 
+        axis.title = element_text(size = 14, colour = "black", family = "Myriad Pro"))+
+  guides(fill = guide_colorbar(title.position = "right",direction = "vertical", 
+                               barheight = unit(4,"cm"), title.vjust = .5,reverse = TRUE,
+                               label.theme = element_text(size = 12, colour = "black"),
+                               title.theme = element_text(size = 13, colour = "black", angle = 90),
+                               title = expression(Concentration~(mgm^{-3}))))+
+  ylab("Pressure [m]"),
+
+ggplot(data = kimbiji.ctd.tb, 
+                      aes(x = longitude, y = pressure, z = temperature)) +
+  metR::geom_contour_fill(na.fill = TRUE, bins = 60)+
+  metR::geom_contour2(colour = "grey40")+
+  metR::geom_text_contour(stroke = 0, rotate = FALSE)+
+  scale_y_reverse()+
+  scale_fill_gradientn(colours = oce::oce.colorsTemperature(120))+
+  coord_cartesian(expand = FALSE)+
+  metR::scale_x_longitude(ticks = .15)+
+  theme_bw()+
+  theme(legend.position = "right", legend.background = element_rect(fill = NA), 
+        legend.text = element_text(colour = "white"), legend.title = element_text(colour = "white"), 
+        axis.text = element_text(size = 12, colour = "black", family = "Myriad Pro"), 
+        axis.title = element_text(size = 14, colour = "black", family = "Myriad Pro"))+
+  guides(fill = guide_colorbar(title.position = "right",direction = "vertical", 
+                               barheight = unit(4,"cm"), title.vjust = .5,reverse = TRUE,
+                               label.theme = element_text(size = 12, colour = "black"),
+                               title.theme = element_text(size = 13, colour = "black", angle = 90),
+                               title = expression(Temperature~(degree*C))))+
+  ylab("Pressure [m]"),
+
+ggplot(data = kimbiji.ctd.tb, 
+                      aes(x = longitude, y = pressure, z = oxygen)) +
+  metR::geom_contour_fill(na.fill = TRUE, bins = 60)+
+  metR::geom_contour2(colour = "grey40")+
+  metR::geom_text_contour(stroke = 0, rotate = FALSE)+
+  scale_y_reverse()+
+  scale_fill_gradientn(colours = oce::oce.colorsViridis(120))+
+  coord_cartesian(expand = FALSE)+
+  metR::scale_x_longitude(ticks = .15)+
+  theme_bw()+
+  theme(legend.position = "right", legend.background = element_rect(fill = NA), 
+        legend.text = element_text(colour = "white"), legend.title = element_text(colour = "white"), 
+        axis.text = element_text(size = 12, colour = "black", family = "Myriad Pro"), 
+        axis.title = element_text(size = 14, colour = "black", family = "Myriad Pro"))+
+  guides(fill = guide_colorbar(title.position = "right",direction = "vertical", 
+                               barheight = unit(4,"cm"), title.vjust = .5, reverse = TRUE,
+                               label.theme = element_text(size = 12, colour = "black"),
+                               title.theme = element_text(size = 13, colour = "black", angle = 90),
+                               title = expression(Dissolved~oxygen~(mgm^{-1}))))+
+  ylab("Pressure [m]")
+
+)
+
+```
+
+We can now plot the sections of some variables for the the transect In the Pemba channel
+```{r}
+
+pemba.ctd.tb = ctd.cast.df04 %>% 
+  filter(latitude >= -6 & pressure <= 200)
+
+egg::ggarrange(
+  
+ggplot(data = pemba.ctd.tb, 
+                      aes(x = longitude, y = pressure, z = fluorescence)) +
+  metR::geom_contour_fill(na.fill = TRUE, bins = 60)+
+  metR::geom_contour2(colour = "grey40")+
+  metR::geom_text_contour(stroke = 0, rotate = FALSE)+
+  scale_y_reverse()+
+  scale_fill_gradientn(colours = oce::oce.colors9A(120))+
+  coord_cartesian(expand = FALSE)+
+  metR::scale_x_longitude(ticks = .15)+
+  theme_bw()+
+  theme(legend.position = "right", legend.background = element_rect(fill = NA), 
+        legend.text = element_text(colour = "white"), legend.title = element_text(colour = "white"), 
+        axis.text = element_text(size = 12, colour = "black", family = "Myriad Pro"), 
+        axis.title = element_text(size = 14, colour = "black", family = "Myriad Pro"))+
+  guides(fill = guide_colorbar(title.position = "right",direction = "vertical", 
+                               barheight = unit(4,"cm"), title.vjust = .5,reverse = TRUE,
+                               label.theme = element_text(size = 12, colour = "black"),
+                               title.theme = element_text(size = 13, colour = "black", angle = 90),
+                               title = expression(Concentration~(mgm^{-3}))))+
+  ylab("Pressure [m]"),
+
+ggplot(data = pemba.ctd.tb, 
+                      aes(x = longitude, y = pressure, z = temperature)) +
+  metR::geom_contour_fill(na.fill = TRUE, bins = 60)+
+  metR::geom_contour2(colour = "grey40")+
+  metR::geom_text_contour(stroke = 0, rotate = FALSE)+
+  scale_y_reverse()+
+  scale_fill_gradientn(colours = oce::oce.colorsTemperature(120))+
+  coord_cartesian(expand = FALSE)+
+  metR::scale_x_longitude(ticks = .15)+
+  theme_bw()+
+  theme(legend.position = "right", legend.background = element_rect(fill = NA), 
+        legend.text = element_text(colour = "white"), legend.title = element_text(colour = "white"), 
+        axis.text = element_text(size = 12, colour = "black", family = "Myriad Pro"), 
+        axis.title = element_text(size = 14, colour = "black", family = "Myriad Pro"))+
+  guides(fill = guide_colorbar(title.position = "right",direction = "vertical", 
+                               barheight = unit(4,"cm"), title.vjust = .5,reverse = TRUE,
+                               label.theme = element_text(size = 12, colour = "black"),
+                               title.theme = element_text(size = 13, colour = "black", angle = 90),
+                               title = expression(Temperature~(degree*C))))+
+  ylab("Pressure [m]"),
+
+ggplot(data = pemba.ctd.tb, 
+                      aes(x = longitude, y = pressure, z = oxygen)) +
+  metR::geom_contour_fill(na.fill = TRUE, bins = 60)+
+  metR::geom_contour2(colour = "grey40")+
+  metR::geom_text_contour(stroke = 0, rotate = FALSE)+
+  scale_y_reverse()+
+  scale_fill_gradientn(colours = oce::oce.colorsViridis(120))+
+  coord_cartesian(expand = FALSE)+
+  metR::scale_x_longitude(ticks = .15)+
+  theme_bw()+
+  theme(legend.position = "right", legend.background = element_rect(fill = NA), 
+        legend.text = element_text(colour = "white"), legend.title = element_text(colour = "white"), 
+        axis.text = element_text(size = 12, colour = "black", family = "Myriad Pro"), 
+        axis.title = element_text(size = 14, colour = "black", family = "Myriad Pro"))+
+  guides(fill = guide_colorbar(title.position = "right",direction = "vertical", 
+                               barheight = unit(4,"cm"), title.vjust = .5, reverse = TRUE,
+                               label.theme = element_text(size = 12, colour = "black"),
+                               title.theme = element_text(size = 13, colour = "black", angle = 90),
+                               title = expression(Dissolved~oxygen~(mgm^{-1}))))+
+  ylab("Pressure [m]")
+
+)
+
+```
+

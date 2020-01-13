@@ -1,0 +1,479 @@
+---
+title: "CTD Processing"
+author: "Masumbuko Semba"
+date: "July 23, 2018"
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+```{r}
+require(oce)
+require(ocedata)
+require(tidyverse)
+require(sf)
+require(lubridate)
+
+```
+
+
+```{r}
+file = dir("./ctd_bongo2018/", pattern = ".cnv", full.names = TRUE)
+```
+
+```{r}
+ctd = list()
+
+for (i in 1:length(file)){
+  ctd[[i]] = read.ctd(file[i]) %>%
+    ctdTrim(method = "downcast") %>%
+    ctdDecimate(p = 1)
+  
+}
+```
+
+
+```{r}
+ctd[[1]]%>%plot(which = c("oxygen", "temperature", "fluorescence", "map"))
+
+
+subset(section, latitude >= -5.437)%>%plot(which = c(1,2,3,99), xtype = "latitude", ztype = "image")
+
+section.sub = subset(section, latitude >= -6.2)
+
+plot(section.sub, which = c("map", "oxygen"), xytpe = "latitude", ztype = "image" )
+
+plot(section, which = 99)
+
+ctd[[28]]%>%plot(which = c("oxygen", "fluorescence"), plim = c(400,0))
+
+```
+
+Create a section of the CTD station casted in June 2018
+
+```{r}
+
+ctd.section = ctd %>% 
+  as.section()
+
+```
+
+We can then subset only section of CTD casted above Mafia Island
+```{r}
+
+ctd.section %>% 
+  subset(latitude >= -8) %>% 
+  plot(which = "map")
+
+```
+
+We then slot only the transect that cross
+```{r}
+kimbiji.section = ctd.section %>% 
+  subset(latitude >=-8 & latitude < -7) 
+
+
+```
+
+
+```{r}
+
+par(mfrow = c(3,1))
+
+kimbiji.section %>% 
+  sectionGrid(p = seq(0,500,10))%>%
+  sectionSmooth()%>% 
+  plot( which = 99)
+
+kimbiji.section %>% 
+  sectionGrid(p = seq(0,500,10))%>%
+  sectionSmooth()%>% 
+  plot( ztype = "contour", ylim = c(200,10), which =  "fluorescence", xtype = "longitude")
+
+kimbiji.section %>% 
+  sectionGrid(p = seq(0,500,5)) %>%
+  sectionSmooth() %>% 
+  plot( ztype = "contour", ylim = c(200,10), which =  "temperature", xtype = "longitude")
+```
+
+
+```{r}
+
+kimbiji.ctd.list = kimbiji.section@data$station
+kimbiji.section[["station"]]
+
+par(mfrow = c(2,2))
+kimbiji.ctd.list[[1]] %>% plotProfile(xtype = "fluorescence")
+kimbiji.ctd.list[[1]] %>% plotProfile(xtype = "temperature")
+kimbiji.ctd.list[[1]] %>% plotProfile(xtype = "oxygen")
+kimbiji.ctd.list[[1]] %>% plotProfile(xtype = "salinity")
+```
+
+
+```{r}
+## smooth the profile by standard depth of 4 meter interval
+kimbiji.section10 = kimbiji.section %>% sectionGrid(p = seq(0,170,4))
+
+## plot the smoothed values
+kimbiji.section10 %>% plot(ztype = "image", xtype = "longitude")
+
+```
+
+
+```{r}
+
+## convert the section to list of CTD 
+kimbiji.section10.list = kimbiji.section10[["station"]]
+
+## then plot the profile of cast with smoothed values
+par(mfrow = c(2,2))
+kimbiji.section10.list[[1]] %>% plotProfile(xtype = "fluorescence")
+kimbiji.section10.list[[1]] %>% plotProfile(xtype = "temperature")
+kimbiji.section10.list[[1]] %>% plotProfile(xtype = "oxygen")
+kimbiji.section10.list[[1]] %>% plotProfile(xtype = "salinity")
+```
+
+
+
+```{r}
+
+kimbiji.ctd.tb = list()
+
+for (j in 1:length(kimbiji.section10.list)){
+  
+kimbiji.ctd.tb[[j]] = kimbiji.section10.list[[j]]@data %>% 
+  as.tibble()  %>% 
+  filter(pressure <=200) %>%
+  mutate(time = kimbiji.ctd.list[[j]]@metadata$startTime, 
+         longitude = kimbiji.ctd.list[[j]]@metadata$longitude, 
+         latitude = kimbiji.ctd.list[[j]]@metadata$latitude, 
+         station = kimbiji.ctd.list[[j]]@metadata$station,
+         depth.group = cut(depth, breaks = c(0,50,100,150,200), 
+                           labels = c("Below 50", "50-100", "100-150", "Above 150"))) %>% 
+  select(time, longitude, latitude, station,pressure, depth, depth.group,
+         conductivity,temperature, salinity, oxygen, fluorescence)
+  
+}
+
+kimbiji.ctd.tb = kimbiji.ctd.tb %>% bind_rows()
+```
+
+
+
+```{r}
+
+egg::ggarrange(
+  
+ggplot(data = kimbiji.ctd.tb, 
+                      aes(x = longitude, y = pressure, z = fluorescence)) +
+  metR::geom_contour_fill(na.fill = TRUE, bins = 60)+
+  metR::geom_contour2(colour = "grey40")+
+  metR::geom_text_contour(stroke = 0, rotate = FALSE)+
+  scale_y_reverse()+
+  scale_fill_gradientn(colours = oce::oce.colors9A(120))+
+  coord_cartesian(expand = FALSE)+
+  metR::scale_x_longitude(ticks = .05)+
+  theme_bw()+
+  theme(legend.position = "right", legend.background = element_rect(fill = NA), 
+        legend.text = element_text(colour = "white"), legend.title = element_text(colour = "white"), 
+        axis.text = element_text(size = 12, colour = "black", family = "Myriad Pro"), 
+        axis.title = element_text(size = 14, colour = "black", family = "Myriad Pro"))+
+  guides(fill = guide_colorbar(title.position = "right",direction = "vertical", 
+                               barheight = unit(4,"cm"), title.vjust = .5,reverse = TRUE,
+                               label.theme = element_text(size = 12, colour = "black"),
+                               title.theme = element_text(size = 13, colour = "black", angle = 90),
+                               title = expression(Concentration~(mgm^{-3}))))+
+  ylab("Pressure [m]"),
+
+ggplot(data = kimbiji.ctd.tb, 
+                      aes(x = longitude, y = pressure, z = temperature)) +
+  metR::geom_contour_fill(na.fill = TRUE, bins = 60)+
+  metR::geom_contour2(colour = "grey40")+
+  metR::geom_text_contour(stroke = 0, rotate = FALSE)+
+  scale_y_reverse()+
+  scale_fill_gradientn(colours = oce::oce.colorsTemperature(120))+
+  coord_cartesian(expand = FALSE)+
+  metR::scale_x_longitude(ticks = .05)+
+  theme_bw()+
+  theme(legend.position = "right", legend.background = element_rect(fill = NA), 
+        legend.text = element_text(colour = "white"), legend.title = element_text(colour = "white"), 
+        axis.text = element_text(size = 12, colour = "black", family = "Myriad Pro"), 
+        axis.title = element_text(size = 14, colour = "black", family = "Myriad Pro"))+
+  guides(fill = guide_colorbar(title.position = "right",direction = "vertical", 
+                               barheight = unit(4,"cm"), title.vjust = .5,reverse = TRUE,
+                               label.theme = element_text(size = 12, colour = "black"),
+                               title.theme = element_text(size = 13, colour = "black", angle = 90),
+                               title = expression(Temperature~(degree*C))))+
+  ylab("Pressure [m]"),
+
+ggplot(data = kimbiji.ctd.tb, 
+                      aes(x = longitude, y = pressure, z = oxygen)) +
+  metR::geom_contour_fill(na.fill = TRUE, bins = 60)+
+  metR::geom_contour2(colour = "grey40")+
+  metR::geom_text_contour(stroke = 0, rotate = FALSE)+
+  scale_y_reverse()+
+  scale_fill_gradientn(colours = oce::oce.colorsViridis(120))+
+  coord_cartesian(expand = FALSE)+
+  metR::scale_x_longitude(ticks = .05)+
+  theme_bw()+
+  theme(legend.position = "right", legend.background = element_rect(fill = NA), 
+        legend.text = element_text(colour = "white"), legend.title = element_text(colour = "white"), 
+        axis.text = element_text(size = 12, colour = "black", family = "Myriad Pro"), 
+        axis.title = element_text(size = 14, colour = "black", family = "Myriad Pro"))+
+  guides(fill = guide_colorbar(title.position = "right",direction = "vertical", 
+                               barheight = unit(4,"cm"), title.vjust = .5, reverse = TRUE,
+                               label.theme = element_text(size = 12, colour = "black"),
+                               title.theme = element_text(size = 13, colour = "black", angle = 90),
+                               title = expression(Dissolved~oxygen~(mgm^{-1}))))+
+  ylab("Pressure [m]")
+
+)
+
+```
+
+
+
+
+## Data processing
+
+
+
+
+
+<!-- ```{r} -->
+
+<!-- ctd.cast.distance = data.frame(Station = kimbiji.ctd.tb$station %>% unique(), -->
+<!--                                Lon = kimbiji.ctd.tb$longitude %>% unique(),  -->
+<!--                                Lat = kimbiji.ctd.tb$latitude %>% unique()) %>% -->
+<!--   mutate(distance = geodDist(Lon, Lat, alongPath = TRUE)) -->
+
+<!-- kimbiji.stats = kimbiji.ctd.tb%>% -->
+<!--   filter(!is.na(depth.group)) %>%  -->
+<!--   group_by(station, depth.group) %>%  -->
+<!--   summarise(xbar = mean(fluorescence, na.rm = TRUE),  -->
+<!--             error = sd(fluorescence, na.rm = TRUE)/sqrt(length(fluorescence))) %>%  -->
+<!--   ungroup()%>%  -->
+<!--   mutate(longitude = rep(kimbiji.ctd.tb$longitude%>%unique(), each = 4),  -->
+<!--          upper = xbar + error, lower = xbar - error, season = "SE") -->
+
+<!-- ggplot(data = kimbiji.stats, aes(x = longitude, y = xbar, col = depth.group))+ -->
+<!--   geom_line(size = .75) + -->
+<!--   geom_point(size = 3.5)+ -->
+<!--   geom_errorbar(aes(ymin = lower, ymax = upper), width = 0.01, size = 0.75)+ -->
+<!--   theme(axis.text = element_text(size = 10, colour = "black"), -->
+<!--         axis.title = element_text(colour = "black", size = 11), -->
+<!--         panel.border = element_rect(colour = 1, fill = NA), panel.grid = element_blank(), -->
+<!--         panel.grid.minor.x = element_line(colour = "lightgray", linetype = 3, size = 0.25), -->
+<!--         panel.grid.major = element_line(colour = "lightgray", linetype = 3, size = 0.25),  -->
+<!--         panel.background = element_rect(fill = NA), -->
+<!--         legend.key = element_rect(fill = NA), -->
+<!--         legend.key.height = unit(.45, "cm"),  -->
+<!--         legend.key.width = unit(1.2, "cm"), -->
+<!--         legend.background = element_rect(fill = NA, colour = NA), -->
+<!--         legend.text = element_text(colour = "black", size = 10), -->
+<!--         legend.title = element_text(colour = "black", size = 12), -->
+<!--         legend.position = c(0.850,0.9))+ -->
+<!--   scale_y_continuous(breaks = seq(0.1,0.8,0.1))+ -->
+<!--   # scale_x_continuous(labels = ctd.cast.distance$Lon %>% round(digits = 2))+ -->
+<!--   # scale_color_discrete(name = "Depth strata (m)")+ -->
+<!--   labs(x = "", y = expression(Fluorescence~(mgm^{-3}))) -->
+
+<!-- ``` -->
+
+<!-- ```{r} -->
+<!-- fit = glm(fluorescence~station+depth.group, data = kimbiji.ctd.tb %>% filter(depth.group %in% c("Below 50", "50-100"))) -->
+<!-- summary(fit) -->
+<!-- TukeyHSD(aov(fit)) -->
+<!-- ``` -->
+
+
+<!-- ```{r include=FALSE, warning=FALSE} -->
+<!-- ##read Africa continental shapefile that we will use throught the munuscript as basemap dataset for maps -->
+<!-- africa = read_sf("E:/GIS/Tanzania spatial data Bank/EAF14 Tanzania spatial datasets/africa/Spatial/AdmInfr/afcntry.shp") -->
+
+<!-- ## clean the file -->
+<!-- tz.ke = africa%>%select(-c(FIPS_CNTRY, REGIONA, EMPTY, EMPTY2))%>% -->
+<!--   filter(CNTRY_NAME == "Tanzania" | CNTRY_NAME == "Kenya") -->
+<!-- ``` -->
+
+
+<!-- ```{r} -->
+<!-- map = ggplot()+ -->
+<!--   geom_sf(data = tz.ke, col = "darkgrey")+ -->
+<!--   geom_point(data=ctd.cast.distance,  -->
+<!--              aes(x = Lon, y = Lat), size = 3)+ -->
+<!--   coord_sf(ylim = c(-8,-6.8), xlim = c(39.2, 39.95))+ -->
+<!--   theme_bw() + -->
+<!--   theme(legend.position = "none", -->
+<!--         legend.text = element_text(size = 11), -->
+<!--         legend.background = element_rect(colour = "black", fill = NA), -->
+<!--         axis.text = element_text(size = 10, colour = 1), -->
+<!--         axis.title = element_text(size = 11, colour = 1), -->
+<!--         panel.grid = element_line(colour = "lightgrey", linetype = 3)) + -->
+<!--   scale_x_continuous(breaks = seq(39.3, 40, .2)) + -->
+<!--   scale_y_continuous(breaks = seq(-8, -6.8, .2)) + -->
+<!--   labs(x = NULL, y = NULL)+ -->
+<!--   annotate(geom = "text", x = 39.45, y = -6.8, label = "Dar Es Salaam")+ -->
+<!--   annotate(geom = "text", x = 39.4, y = -7.0, label = "Kimbiji")+ -->
+<!--   annotate(geom = "text", x = 39.5, y = -7.6, label = "Rufiji-Mafia Channel")+ -->
+<!--   annotate(geom = "text", x = 39.8, y = -7.7, label = "Mafia\nIsland")+ -->
+<!--   annotate(geom = "text", x = 39.3, y = -7.9, label = "Rufiji")+ -->
+<!--   ggsn::scalebar(location = "bottomright", x.min = 39.2,x.max = 39.9,  -->
+<!--                  y.min = -8.05, y.max = -6.8, dist = 15, dd2km = TRUE,  -->
+<!--                  model = "WGS84", st.dist = 0.025, st.size = 4, st.bottom = FALSE) -->
+
+<!-- aoi = data.frame(lon = c(39.3,40,40,39.3,39.3), -->
+<!--                  lat = c(-8,-8,-7,-7,-8)) -->
+
+
+<!--   inset = ggplot()+ -->
+<!--     geom_sf(data = tz.ke, col = NA)+ -->
+<!--     geom_path(data = aoi, aes(x = lon, y = lat), col = 1)+ -->
+<!--   coord_sf(ylim = c(-8.5,-5.8), xlim = c(38.7, 40.1))+ -->
+<!--   theme(panel.grid = element_line(colour = NA), -->
+<!--         axis.text = element_blank(), -->
+<!--         plot.background = element_blank(), -->
+<!--         axis.ticks = element_blank(), -->
+<!--         panel.border = element_rect(fill = NA, colour = 1), -->
+<!--         panel.background = element_rect(fill = "white"))+ -->
+<!--   labs(x = "", y = "") -->
+
+
+<!--   cowplot::ggdraw()+ -->
+<!--   cowplot::draw_plot(x = 0,y = 0,width = 1,height = 1, plot = map)+ -->
+<!--   cowplot::draw_plot(x = 0.510, y = 0.31, width = 0.35, height = 0.4, plot = inset) -->
+
+<!-- ``` -->
+
+<!-- ## Drifter Trajectories for Kimbiji -->
+<!-- ```{r } -->
+<!-- ## load drifter data -->
+<!-- drifter = read_table2("E:/Data Manipulation/drifter/tropind_drifters.txt", col_names = FALSE) -->
+
+<!-- ## insert variable names -->
+<!-- drifter = drifter %>% select(id = X1, lon = X2, lat = X3, year= X8, month =   X9,  -->
+<!--                                    day =  X10, hour = X11, drogue = X4, u =X5, v = X6,   sst = X7) -->
+<!-- ``` -->
+
+<!-- ```{r} -->
+
+<!-- ## create season -->
+<!-- drifter = drifter %>%  -->
+<!--   mutate(season = month,  -->
+<!--          season = replace(season,season %in% c(11,12,1,2,3, 4), "NE"), -->
+<!--          # season = replace(season,season %in% c(4,10), "IN"), -->
+<!--          season = replace(season,season %in% c(5,6,7,8,9,10 ), "SE")) -->
+
+<!-- ## subset for the Area of interest -->
+<!-- drifter.kimbiji = drifter %>% filter(lon >=38 & lon <= 41 & lat >=-12 & lat <=-5)  -->
+
+<!-- ``` -->
+
+
+<!-- ```{r} -->
+<!-- # make simple features of those drifters crossed the pemba channel -->
+<!-- kimbiji.sf = drifter.kimbiji %>%  -->
+<!--   filter(id %in% c(46025,70959,71123,71203,79023,84156,139775)) %>% -->
+<!--   st_as_sf(coords = c("lon", "lat")) %>%  -->
+<!--   st_set_crs(4326) -->
+
+<!-- ## transform simple points into linestring -->
+<!-- kimbiji.traj = kimbiji.sf %>% -->
+<!--   group_by(id, season) %>% -->
+<!--   summarise(do_union = FALSE) %>% -->
+<!--   st_cast("LINESTRING") -->
+
+<!-- # drifter.kimbiji %>% group_by(id, season) %>% tally() %>% filter(n >5) -->
+
+
+<!-- ``` -->
+
+
+<!-- ```{r} -->
+<!-- ggplot()+ -->
+<!--   geom_sf(data = kimbiji.traj, aes(col = season), show.legend = FALSE)+ -->
+<!--   geom_sf(data = kimbiji.sf, aes(col = season), fill = NA, show.legend = FALSE)+ -->
+<!--   geom_sf(data = tz.ke, col = "darkgrey")+ -->
+<!--   geom_point(data=ctd.cast.distance,  -->
+<!--              aes(x = Lon, y = Lat), size = 3)+ -->
+<!--   # coord_sf(ylim = c(-8,-6.8), xlim = c(39.2, 39.95))+ -->
+<!--   coord_sf(ylim = c(-8.2,-6.3), xlim = c(38.7, 40.1))+ -->
+<!--   theme_bw() + -->
+<!--   theme(legend.position = c(.15,.15), -->
+<!--         legend.text = element_text(size = 11), -->
+<!--         legend.background = element_rect(colour = "black", fill = NA), -->
+<!--         axis.text = element_text(size = 10, colour = 1), -->
+<!--         axis.title = element_text(size = 11, colour = 1), -->
+<!--         panel.grid = element_line(colour = "lightgrey", linetype = 3)) + -->
+<!--   scale_x_continuous(breaks = seq(38.8, 40.2, .4)) + -->
+<!--   scale_y_continuous(breaks = seq(-8, -6.5, .5)) + -->
+<!--   labs(x = NULL, y = NULL)+ -->
+<!--   annotate(geom = "text", x = 39.45, y = -6.8, label = "Dar Es Salaam")+ -->
+<!--   annotate(geom = "text", x = 39.4, y = -7.0, label = "Kimbiji")+ -->
+<!--   annotate(geom = "text", x = 39.5, y = -7.6, label = "Rufiji-Mafia Channel")+ -->
+<!--   # annotate(geom = "text", x = 39.8, y = -7.7, label = "Mafia\nIsland")+ -->
+<!--   annotate(geom = "text", x = 39.3, y = -7.9, label = "Rufiji") -->
+<!-- ``` -->
+
+
+<!-- ```{r} -->
+<!-- ggplot()+ -->
+<!--     geom_sf(data = tz.ke, col = NA)+ -->
+<!--     geom_path(data = aoi, aes(x = lon, y = lat), col = 1)+ -->
+<!--   geom_sf(data = kimbiji.traj, aes(col = season))+ -->
+<!--   geom_sf(data = kimbiji.sf, aes(col = season))+ -->
+<!--   coord_sf(ylim = c(-8.5,-5.8), xlim = c(38.7, 40.1))+ -->
+<!--   theme(panel.grid = element_line(colour = NA), -->
+<!--         axis.text = element_blank(), -->
+<!--         plot.background = element_blank(), -->
+<!--         axis.ticks = element_blank(), -->
+<!--         panel.border = element_rect(fill = NA, colour = 1), -->
+<!--         panel.background = element_rect(fill = "white"))+ -->
+<!--   labs(x = "", y = "") -->
+<!-- ``` -->
+
+
+## Python reading CTD files
+the **ctd** module contains function to load hydrographic data as pandas DataFrame with some handy methods for data pre-processing and analysis in Python. This module can load *SeaBird CTD (CNV), Sippican XBT (EDF)*, and *Falmouth CTD (ASCII)* formats.
+```{r}
+require(reticulate)
+use_python("c:/Python/Anaconda3/")
+```
+
+```{python}
+import pandas as pd
+import matplotlib.pyplot as plt
+import ctd
+```
+
+```{python}
+pemba = pd.DataFrame.ctd.read_cnv("./ctd_bongo2018/stn001.cnv")
+
+```
+
+
+```{python}
+
+downcast, upcast = pemba.split()
+
+temperature = downcast['t090C']
+
+fig, ax = plt.subplots(figsize=(5.5, 6))
+temperature.plot_cast(ax=ax)
+temperature.remove_above_water()\
+           .despike()\
+           .lp_filter()\
+           .press_check()\
+           .bindata()\
+           .smooth(window_len=21, window='hanning') \
+           .plot_cast(ax=ax)
+ax.set_ylabel('Pressure (dbar)')
+ax.set_xlabel('Temperature (°C)')
+plt.show()
+```
+

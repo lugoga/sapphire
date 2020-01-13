@@ -1,0 +1,26 @@
+{
+    "collab_server" : "",
+    "contents" : "",
+    "created" : 1578903894201.000,
+    "dirty" : false,
+    "encoding" : "UTF-8",
+    "folds" : "",
+    "hash" : "0",
+    "id" : "E03CF768",
+    "lastKnownWriteTime" : 1578935772,
+    "last_content_update" : 1578935772513,
+    "path" : "E:/Data Manipulation/saphire/ctd_processing.Rmd",
+    "project_path" : "ctd_processing.Rmd",
+    "properties" : {
+        "chunk_output_type" : "console",
+        "cursorPosition" : "236,3",
+        "scrollLine" : "228"
+    },
+    "read_only" : false,
+    "read_only_alternatives" : [
+    ],
+    "relative_order" : 1,
+    "source_on_save" : false,
+    "source_window" : "",
+    "type" : "r_markdown"
+}
